@@ -21,9 +21,9 @@ class BallPhysics {
     required this.boundaryRadius,
     this.damping = 0.96,
     this.friction = 0.98,
-    this.mass = 1.0, // Default mass
-    this.restitution = 1.0, // Perfectly elastic by default
-    this.color = Colors.blue,
+    this.mass = 2.0, // Increased mass for more momentum
+    this.restitution = 1.0, // Perfectly elastic collisions
+    required this.color, // Assign color during initialization
   });
 
   /// Applies acceleration to the current velocity.
@@ -62,14 +62,6 @@ class BallPhysics {
 
       // Clamp the position to the boundary to prevent sticking
       position = normal * (boundaryRadius - radius);
-
-      /*
-      // Optional: Change color to indicate collision
-      color = Colors.red;
-
-      // Reset color after a short duration
-      resetColor();
-       */
     }
   }
 
@@ -79,17 +71,10 @@ class BallPhysics {
     return vector - normal * (2 * dotProduct);
   }
 
-  /// Resets the ball's color back to blue after collision
-  void resetColor() {
-    Future.delayed(Duration(milliseconds: 100), () {
-      color = Colors.blue;
-    });
-  }
-
   /// Resets the physics state (optional, for resetting the simulation)
   void reset() {
     velocity = Offset.zero;
     position = Offset.zero;
-    color = Colors.blue;
+    // No color reset needed since collision coloring is removed
   }
 }

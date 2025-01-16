@@ -20,7 +20,7 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
   final double _ballRadius = 15;
 
   // Sensitivity factor to control acceleration response
-  final double _sensitivity = 0.1; // Adjust as needed
+  final double _sensitivity = 0.15; // Updated sensitivity
 
   // Low-pass filter parameters
   double _filteredAccelX = 0;
@@ -67,36 +67,50 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
     });
   }
 
-  /// Initializes the balls at different positions
+  /// Initializes 10 balls at random positions with distinct colors
   void _initializeBalls() {
     // Ensure screen dimensions are available
     _screenWidth = MediaQuery.of(context).size.width;
     _screenHeight = MediaQuery.of(context).size.height;
 
+    // Calculate boundary radius
+    double boundaryRadius = min(_screenWidth, _screenHeight) / 2 - _ballRadius;
+
+    // Initialize 10 balls with random positions and colors
+    List<BallPhysics> newBalls = [];
+    Random random = Random();
+
+    for (int i = 0; i < 10; i++) {
+      // Generate random angle and distance within boundary
+      double angle = random.nextDouble() * 2 * pi;
+      double distance = random.nextDouble() * boundaryRadius;
+
+      // Calculate position
+      double posX = distance * cos(angle);
+      double posY = distance * sin(angle);
+      Offset position = Offset(posX, posY);
+
+      // Assign random color
+      Color color = Colors.primaries[random.nextInt(Colors.primaries.length)];
+
+      // Create BallPhysics instance
+      BallPhysics ball = BallPhysics(
+        position: position,
+        velocity: Offset.zero,
+        radius: _ballRadius,
+        boundaryRadius: boundaryRadius,
+        damping: 0.96,
+        friction: 0.98,
+        mass: 2.0, // Higher mass
+        restitution: 1.0, // Perfectly elastic
+        color: color,
+      );
+
+      newBalls.add(ball);
+    }
+
     setState(() {
-      _balls = [
-        BallPhysics(
-          position: Offset.zero,
-          velocity: Offset.zero,
-          radius: _ballRadius,
-          boundaryRadius: min(_screenWidth, _screenHeight) / 2 - _ballRadius,
-          damping: 0.96,
-          friction: 0.98,
-          mass: 2.0, // Higher mass
-          restitution: 1.0, // Perfectly elastic
-        ),
-        BallPhysics(
-          position: Offset(_ballRadius * 4, _ballRadius * 4), // Different starting position
-          velocity: Offset.zero,
-          radius: _ballRadius,
-          boundaryRadius: min(_screenWidth, _screenHeight) / 2 - _ballRadius,
-          damping: 0.96,
-          friction: 0.98,
-          mass: 2.0, // Higher mass
-          restitution: 1.0, // Perfectly elastic
-          color: Colors.green, // Different color for distinction
-        ),
-      ];
+      _balls = newBalls;
     });
   }
 
@@ -116,7 +130,7 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
     // Calculate adjusted acceleration by removing calibration offset
     Offset adjustedAccel = Offset(_filteredAccelX, _filteredAccelY) - _calibrationOffset;
 
-    // Invert Y-axis to align tilting down with positive screen Y movement
+    // Invert X-axis to align tilting left with positive screen X movement
     Offset acceleration = Offset(-adjustedAccel.dx, adjustedAccel.dy) * _sensitivity;
 
     // Apply acceleration to each ball
@@ -147,7 +161,7 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
         double distance = (ball1.position - ball2.position).distance;
         double minDistance = ball1.radius + ball2.radius;
 
-        if (distance < minDistance) {
+        if (distance < minDistance && distance > 0) { // Avoid division by zero
           // Calculate normal and tangent vectors
           Offset normal = (ball2.position - ball1.position) / distance;
           Offset tangent = Offset(-normal.dy, normal.dx);
@@ -178,15 +192,8 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
           ball1.position -= displacement;
           ball2.position += displacement;
 
-          /*
-          // Optional: Change colors to indicate collision
-          ball1.color = Colors.red;
-          ball2.color = Colors.red;
-
-          // Reset colors after a short duration
-          ball1.resetColor();
-          ball2.resetColor();
-           */
+          // Removed collision coloring
+          // No color change upon collision
         }
       }
     }
@@ -223,8 +230,15 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
                   width: ball.radius * 2,
                   height: ball.radius * 2,
                   decoration: BoxDecoration(
-                    color: ball.color, // Use the ball's current color
+                    color: ball.color, // Use the ball's assigned color
                     shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 4,
+                        offset: Offset(2, 2),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -271,10 +285,10 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
               ],
             ),
           ),
-          // Add a Floating Action Button to reset calibration and balls
+          // Move reset button to (20, 20)
           Positioned(
-            bottom: 30,
-            right: 30,
+            top: 20,
+            left: 20,
             child: FloatingActionButton(
               onPressed: () {
                 setState(() {
