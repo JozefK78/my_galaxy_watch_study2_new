@@ -7,13 +7,15 @@ import 'package:sensors_plus/sensors_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'ball_physics.dart'; // Import the BallPhysics class
 import 'dart:developer' as developer;
+import 'bezel_channel.dart'; // Import the BezelChannel class
 
 class BallSimulator extends StatefulWidget {
   @override
   _BallSimulatorState createState() => _BallSimulatorState();
 }
 
-class _BallSimulatorState extends State<BallSimulator> with SingleTickerProviderStateMixin {
+class _BallSimulatorState extends State<BallSimulator>
+    with SingleTickerProviderStateMixin {
   List<BallPhysics> _balls = []; // List to hold multiple balls
   late double _screenWidth;
   late double _screenHeight;
@@ -37,6 +39,18 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
   bool _isCalibrated = false;
   Offset _calibrationOffset = Offset.zero;
 
+  // Variables for touch interaction
+  BallPhysics? _grabbedBall;
+  Offset? _lastTouchPosition;
+  DateTime? _lastTouchTime;
+
+  // Maximum and minimum number of balls
+  final int _maxBalls = 20;
+  final int _minBalls = 1;
+
+  // Total area constraint (1/3 of screen area)
+  static const double _maxTotalAreaRatio = 1 / 3;
+
   @override
   void initState() {
     super.initState();
@@ -56,8 +70,10 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
         _rawAccelY = event.y;
 
         // Apply low-pass filter to smooth accelerometer data
-        _filteredAccelX = _lowPassFilter(_filteredAccelX, event.x, _filterAlpha);
-        _filteredAccelY = _lowPassFilter(_filteredAccelY, event.y, _filterAlpha);
+        _filteredAccelX =
+            _lowPassFilter(_filteredAccelX, event.x, _filterAlpha);
+        _filteredAccelY =
+            _lowPassFilter(_filteredAccelY, event.y, _filterAlpha);
       });
     });
 
@@ -65,9 +81,14 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
     WidgetsBinding.instance!.addPostFrameCallback((_) {
       _initializeBalls();
     });
+
+    // Listen to bezel rotation
+    BezelChannel.rotationStream.listen((rotationDelta) {
+      _handleBezelRotation(rotationDelta);
+    });
   }
 
-  /// Initializes 10 balls at random positions with distinct colors
+  /// Initializes balls based on the current number of balls
   void _initializeBalls() {
     // Ensure screen dimensions are available
     _screenWidth = MediaQuery.of(context).size.width;
@@ -130,13 +151,16 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
     // Calculate adjusted acceleration by removing calibration offset
     Offset adjustedAccel = Offset(_filteredAccelX, _filteredAccelY) - _calibrationOffset;
 
+    // Corrected Acceleration Inversion
     // Invert X-axis to align tilting left with positive screen X movement
     Offset acceleration = Offset(-adjustedAccel.dx, adjustedAccel.dy) * _sensitivity;
 
-    // Apply acceleration to each ball
+    // Apply acceleration to each ball if it's not grabbed
     for (var ball in _balls) {
-      ball.applyAcceleration(acceleration);
-      ball.updatePosition();
+      if (ball != _grabbedBall) {
+        ball.applyAcceleration(acceleration);
+        ball.updatePosition();
+      }
     }
 
     // Handle ball-ball collisions
@@ -144,7 +168,8 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
 
     // Log position and velocity for debugging
     for (int i = 0; i < _balls.length; i++) {
-      developer.log('Ball $i - Position: ${_balls[i].position}, Velocity: ${_balls[i].velocity}');
+      developer.log(
+          'Ball $i - Position: ${_balls[i].position}, Velocity: ${_balls[i].velocity}');
     }
 
     // Trigger a rebuild for rendering
@@ -191,15 +216,119 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
           Offset displacement = normal * (overlap / 2);
           ball1.position -= displacement;
           ball2.position += displacement;
-
-          // Removed collision coloring
-          // No color change upon collision
         }
       }
     }
   }
 
-  // Low-pass filter to smooth accelerometer data
+  /// Handles bezel rotation to adjust the number of balls
+  void _handleBezelRotation(double rotationDelta) {
+    // Define a threshold to determine significant rotation
+    const double rotationThreshold = 0.1;
+
+    if (rotationDelta.abs() < rotationThreshold) return;
+
+    setState(() {
+      if (rotationDelta > 0) {
+        // Rotate clockwise: Increase the number of balls
+        if (_balls.length < _maxBalls) {
+          _addBall();
+          _adjustBallSizes();
+        }
+      } else {
+        // Rotate counter-clockwise: Decrease the number of balls
+        if (_balls.length > _minBalls) {
+          _removeBall();
+          _adjustBallSizes();
+        }
+      }
+    });
+  }
+
+  /// Adjusts ball sizes based on the number of balls to ensure total area <= 1/3 of screen area
+  void _adjustBallSizes() {
+    // Calculate total available area
+    double screenArea = _screenWidth * _screenHeight;
+    double maxTotalArea = screenArea * _maxTotalAreaRatio;
+
+    // Calculate current total area
+    double currentTotalArea = _balls.fold(
+        0, (sum, ball) => sum + pi * pow(ball.radius, 2));
+
+    // If current total area exceeds max, scale down the radii
+    if (currentTotalArea > maxTotalArea) {
+      double scalingFactor = sqrt(maxTotalArea / currentTotalArea);
+      for (var ball in _balls) {
+        ball.radius *= scalingFactor;
+      }
+    } else {
+      // If total area is less, reset to default radius
+      for (var ball in _balls) {
+        ball.radius = _ballRadius;
+      }
+    }
+  }
+
+  /// Handles touch interactions
+  void _handlePanStart(DragStartDetails details) {
+    // Convert global touch position to center-relative position
+    Offset touchPosition =
+        details.localPosition - Offset(_screenWidth / 2, _screenHeight / 2);
+
+    // Find the topmost ball that contains the touch point
+    for (var ball in _balls.reversed) {
+      if ((ball.position - touchPosition).distance <= ball.radius) {
+        _grabbedBall = ball;
+        _lastTouchPosition = touchPosition;
+        _lastTouchTime = DateTime.now();
+        // Optionally, set ball's velocity to zero while dragging
+        ball.velocity = Offset.zero;
+        break;
+      }
+    }
+  }
+
+  void _handlePanUpdate(DragUpdateDetails details) {
+    if (_grabbedBall != null) {
+      // Convert global touch position to center-relative position
+      Offset touchPosition =
+          details.localPosition - Offset(_screenWidth / 2, _screenHeight / 2);
+
+      // Calculate movement delta
+      Offset delta = touchPosition - _lastTouchPosition!;
+      Duration deltaTime = DateTime.now().difference(_lastTouchTime!);
+
+      // Update ball's position
+      setState(() {
+        _grabbedBall!.position = touchPosition;
+      });
+
+      // Update last touch position and time
+      _lastTouchPosition = touchPosition;
+      _lastTouchTime = DateTime.now();
+    }
+  }
+
+  void _handlePanEnd(DragEndDetails details) {
+    if (_grabbedBall != null && _lastTouchTime != null) {
+      // Calculate velocity based on the last movement
+      Duration deltaTime = DateTime.now().difference(_lastTouchTime!);
+      if (deltaTime.inMilliseconds > 0) {
+        Offset velocity =
+            (_grabbedBall!.position - _lastTouchPosition!) /
+                deltaTime.inMilliseconds *
+                1000; // pixels per second
+        setState(() {
+          _grabbedBall!.velocity = velocity;
+        });
+      }
+    }
+    _grabbedBall = null;
+    _lastTouchPosition = null;
+    _lastTouchTime = null;
+  }
+
+  /// Low-pass filter to smooth accelerometer data
   double _lowPassFilter(double current, double newValue, double alpha) {
     return current * (1.0 - alpha) + newValue * alpha;
   }
@@ -219,91 +348,98 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
     _screenHeight = MediaQuery.of(context).size.height;
 
     return Scaffold(
-      body: Stack(
-        children: [
-          // Render all balls
-          ..._balls.map((ball) {
-            return Center(
-              child: Transform.translate(
-                offset: ball.position,
-                child: Container(
-                  width: ball.radius * 2,
-                  height: ball.radius * 2,
-                  decoration: BoxDecoration(
-                    color: ball.color, // Use the ball's assigned color
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 4,
-                        offset: Offset(2, 2),
-                      ),
-                    ],
+      body: GestureDetector(
+        onPanStart: _handlePanStart,
+        onPanUpdate: _handlePanUpdate,
+        onPanEnd: _handlePanEnd,
+        child: Stack(
+          children: [
+            // Render all balls
+            ..._balls.map((ball) {
+              return Center(
+                child: Transform.translate(
+                  offset: ball.position,
+                  child: Container(
+                    width: ball.radius * 2,
+                    height: ball.radius * 2,
+                    decoration: BoxDecoration(
+                      color: ball.color, // Use the ball's assigned color
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 4,
+                          offset: Offset(2, 2),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+              );
+            }).toList(),
+            // Display accelerometer data for debugging
+            Positioned(
+              top: 10,
+              left: 10,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Raw Accel X: ${_rawAccelX.toStringAsFixed(2)}',
+                    style: TextStyle(color: Colors.white, fontSize: 10),
+                  ),
+                  Text(
+                    'Raw Accel Y: ${_rawAccelY.toStringAsFixed(2)}',
+                    style: TextStyle(color: Colors.white, fontSize: 10),
+                  ),
+                  Text(
+                    'Filtered Accel X: ${_filteredAccelX.toStringAsFixed(2)}',
+                    style: TextStyle(color: Colors.white, fontSize: 10),
+                  ),
+                  Text(
+                    'Filtered Accel Y: ${_filteredAccelY.toStringAsFixed(2)}',
+                    style: TextStyle(color: Colors.white, fontSize: 10),
+                  ),
+                  // Display calibrated accelerometer data
+                  if (_isCalibrated)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Calibrated Accel X: ${(Offset(_filteredAccelX, _filteredAccelY) - _calibrationOffset).dx.toStringAsFixed(2)}',
+                          style:
+                          TextStyle(color: Colors.white, fontSize: 10),
+                        ),
+                        Text(
+                          'Calibrated Accel Y: ${(Offset(_filteredAccelX, _filteredAccelY) - _calibrationOffset).dy.toStringAsFixed(2)}',
+                          style:
+                          TextStyle(color: Colors.white, fontSize: 10),
+                        ),
+                      ],
+                    ),
+                ],
               ),
-            );
-          }).toList(),
-          // Display accelerometer data for debugging
-          Positioned(
-            top: 10,
-            left: 10,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Raw Accel X: ${_rawAccelX.toStringAsFixed(2)}',
-                  style: TextStyle(color: Colors.white, fontSize: 10),
-                ),
-                Text(
-                  'Raw Accel Y: ${_rawAccelY.toStringAsFixed(2)}',
-                  style: TextStyle(color: Colors.white, fontSize: 10),
-                ),
-                Text(
-                  'Filtered Accel X: ${_filteredAccelX.toStringAsFixed(2)}',
-                  style: TextStyle(color: Colors.white, fontSize: 10),
-                ),
-                Text(
-                  'Filtered Accel Y: ${_filteredAccelY.toStringAsFixed(2)}',
-                  style: TextStyle(color: Colors.white, fontSize: 10),
-                ),
-                // Display calibrated accelerometer data
-                if (_isCalibrated)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Calibrated Accel X: ${(Offset(_filteredAccelX, _filteredAccelY) - _calibrationOffset).dx.toStringAsFixed(2)}',
-                        style: TextStyle(color: Colors.white, fontSize: 10),
-                      ),
-                      Text(
-                        'Calibrated Accel Y: ${(Offset(_filteredAccelX, _filteredAccelY) - _calibrationOffset).dy.toStringAsFixed(2)}',
-                        style: TextStyle(color: Colors.white, fontSize: 10),
-                      ),
-                    ],
-                  ),
-              ],
             ),
-          ),
-          // Move reset button to (20, 20)
-          Positioned(
-            top: 20,
-            left: 20,
-            child: FloatingActionButton(
-              onPressed: () {
-                setState(() {
-                  _isCalibrated = false;
-                  _calibrationOffset = Offset.zero;
-                  _balls.forEach((ball) => ball.reset());
-                  _balls.clear();
-                  _initializeBalls();
-                });
-              },
-              child: Icon(Icons.refresh),
-              mini: true,
+            // Move reset button to (20, 20)
+            Positioned(
+              top: 20,
+              left: 20,
+              child: FloatingActionButton(
+                onPressed: () {
+                  setState(() {
+                    _isCalibrated = false;
+                    _calibrationOffset = Offset.zero;
+                    _balls.forEach((ball) => ball.reset());
+                    _balls.clear();
+                    _initializeBalls();
+                  });
+                },
+                child: Icon(Icons.refresh),
+                mini: true,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
