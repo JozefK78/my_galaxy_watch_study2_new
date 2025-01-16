@@ -20,7 +20,7 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
   final double _ballRadius = 15;
 
   // Sensitivity factor to control acceleration response
-  final double _sensitivity = 20; // Reduced from 500
+  final double _sensitivity = 0.2; // Reduced from 500
 
   // Low-pass filter parameters
   double _filteredAccelX = 0;
@@ -98,7 +98,7 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
     // Observe the adjustedAccel values and decide on inversion
     // Here, we assume that tilting forward increases adjustedAccel.dy
     // Adjust inversion based on your observations
-    Offset acceleration = Offset(adjustedAccel.dx, -adjustedAccel.dy) * _sensitivity;
+    Offset acceleration = Offset(-adjustedAccel.dx, adjustedAccel.dy) * _sensitivity;
 
     // Apply acceleration to physics
     _ballPhysics!.applyAcceleration(acceleration);
