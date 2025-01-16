@@ -10,8 +10,8 @@ class BallPhysics {
   final double boundaryRadius;
   final double damping;
   final double friction;
-  final double mass; // New property
-  final double restitution; // New property
+  final double mass; // Mass of the ball
+  final double restitution; // Restitution coefficient for collisions
   Color color;
 
   BallPhysics({
@@ -63,11 +63,13 @@ class BallPhysics {
       // Clamp the position to the boundary to prevent sticking
       position = normal * (boundaryRadius - radius);
 
+      /*
       // Optional: Change color to indicate collision
       color = Colors.red;
 
       // Reset color after a short duration
-      _resetColor();
+      resetColor();
+       */
     }
   }
 
@@ -78,7 +80,7 @@ class BallPhysics {
   }
 
   /// Resets the ball's color back to blue after collision
-  void _resetColor() {
+  void resetColor() {
     Future.delayed(Duration(milliseconds: 100), () {
       color = Colors.blue;
     });

@@ -20,7 +20,7 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
   final double _ballRadius = 15;
 
   // Sensitivity factor to control acceleration response
-  final double _sensitivity = 150; // Adjust as needed
+  final double _sensitivity = 0.1; // Adjust as needed
 
   // Low-pass filter parameters
   double _filteredAccelX = 0;
@@ -117,7 +117,7 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
     Offset adjustedAccel = Offset(_filteredAccelX, _filteredAccelY) - _calibrationOffset;
 
     // Invert Y-axis to align tilting down with positive screen Y movement
-    Offset acceleration = Offset(adjustedAccel.dx, -adjustedAccel.dy) * _sensitivity;
+    Offset acceleration = Offset(-adjustedAccel.dx, adjustedAccel.dy) * _sensitivity;
 
     // Apply acceleration to each ball
     for (var ball in _balls) {
@@ -178,13 +178,15 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
           ball1.position -= displacement;
           ball2.position += displacement;
 
+          /*
           // Optional: Change colors to indicate collision
           ball1.color = Colors.red;
           ball2.color = Colors.red;
 
           // Reset colors after a short duration
-          ball1._resetColor();
-          ball2._resetColor();
+          ball1.resetColor();
+          ball2.resetColor();
+           */
         }
       }
     }
@@ -271,8 +273,8 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
           ),
           // Add a Floating Action Button to reset calibration and balls
           Positioned(
-            bottom: 10,
-            right: 10,
+            bottom: 30,
+            right: 30,
             child: FloatingActionButton(
               onPressed: () {
                 setState(() {
