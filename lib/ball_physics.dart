@@ -9,8 +9,9 @@ class BallPhysics {
   final double radius;
   final double boundaryRadius;
   final double damping;
-  final double maxVelocity;
   final double friction;
+  final double mass; // New property
+  final double restitution; // New property
   Color color;
 
   BallPhysics({
@@ -18,28 +19,24 @@ class BallPhysics {
     required this.velocity,
     required this.radius,
     required this.boundaryRadius,
-    this.damping = 0.96, // Adjusted damping
-    this.maxVelocity = 15.0, // Adjusted max velocity
-    this.friction = 0.98, // Adjusted friction
-    this.color = Colors.blue, // Initial color
+    this.damping = 0.96,
+    this.friction = 0.98,
+    this.mass = 1.0, // Default mass
+    this.restitution = 1.0, // Perfectly elastic by default
+    this.color = Colors.blue,
   });
 
   /// Applies acceleration to the current velocity.
   void applyAcceleration(Offset acceleration) {
     velocity += acceleration;
-
-    // Cap the velocity to the maximum allowed
-    if (velocity.distance > maxVelocity) {
-      velocity = velocity / velocity.distance * maxVelocity;
-    }
   }
 
   /// Updates the ball's position based on its velocity.
   void updatePosition() {
-    // Apply damping to simulate friction or air resistance
+    // Apply damping to simulate air resistance
     velocity *= damping;
 
-    // Apply friction to further reduce velocity
+    // Apply friction to simulate energy loss
     velocity *= friction;
 
     // Update position with current velocity
@@ -57,16 +54,16 @@ class BallPhysics {
       // Calculate the normal vector at the point of collision
       Offset normal = position / distanceFromCenter;
 
-      // Reflect the velocity vector over the normal
-      velocity = _reflect(velocity, normal);
+      // Calculate velocity normal to the boundary
+      double velocityNormal = velocity.dx * normal.dx + velocity.dy * normal.dy;
+
+      // Reflect the velocity vector over the normal with restitution
+      velocity = velocity - normal * ((1 + restitution) * velocityNormal);
 
       // Clamp the position to the boundary to prevent sticking
       position = normal * (boundaryRadius - radius);
 
-      // Apply additional damping upon collision to simulate energy loss
-      velocity *= damping;
-
-      // Change color to indicate collision
+      // Optional: Change color to indicate collision
       color = Colors.red;
 
       // Reset color after a short duration

@@ -14,18 +14,18 @@ class BallSimulator extends StatefulWidget {
 }
 
 class _BallSimulatorState extends State<BallSimulator> with SingleTickerProviderStateMixin {
-  BallPhysics? _ballPhysics;
+  List<BallPhysics> _balls = []; // List to hold multiple balls
   late double _screenWidth;
   late double _screenHeight;
   final double _ballRadius = 15;
 
   // Sensitivity factor to control acceleration response
-  final double _sensitivity = 0.2; // Reduced from 500
+  final double _sensitivity = 150; // Adjust as needed
 
   // Low-pass filter parameters
   double _filteredAccelX = 0;
   double _filteredAccelY = 0;
-  final double _filterAlpha = 0.3; // Increased from 0.2
+  final double _filterAlpha = 0.3;
 
   late Ticker _ticker;
 
@@ -60,57 +60,134 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
         _filteredAccelY = _lowPassFilter(_filteredAccelY, event.y, _filterAlpha);
       });
     });
+
+    // Initialize balls after first frame
+    WidgetsBinding.instance!.addPostFrameCallback((_) {
+      _initializeBalls();
+    });
   }
 
-  /// Ticker callback to update the physics simulation
-  void _onTick(Duration elapsed) {
+  /// Initializes the balls at different positions
+  void _initializeBalls() {
     // Ensure screen dimensions are available
-    if (_screenWidth == 0 || _screenHeight == 0) return;
+    _screenWidth = MediaQuery.of(context).size.width;
+    _screenHeight = MediaQuery.of(context).size.height;
 
-    // Initialize BallPhysics if not already initialized
-    if (_ballPhysics == null) {
-      if (!_isCalibrated) {
-        // Perform calibration on the first tick
-        _calibrationOffset = Offset(_filteredAccelX, _filteredAccelY);
-        _isCalibrated = true;
-
-        _ballPhysics = BallPhysics(
+    setState(() {
+      _balls = [
+        BallPhysics(
           position: Offset.zero,
           velocity: Offset.zero,
           radius: _ballRadius,
           boundaryRadius: min(_screenWidth, _screenHeight) / 2 - _ballRadius,
-          damping: 0.96, // Adjusted damping
-          maxVelocity: 15.0, // Adjusted max velocity
-          friction: 0.98, // Adjusted friction
-        );
+          damping: 0.96,
+          friction: 0.98,
+          mass: 2.0, // Higher mass
+          restitution: 1.0, // Perfectly elastic
+        ),
+        BallPhysics(
+          position: Offset(_ballRadius * 4, _ballRadius * 4), // Different starting position
+          velocity: Offset.zero,
+          radius: _ballRadius,
+          boundaryRadius: min(_screenWidth, _screenHeight) / 2 - _ballRadius,
+          damping: 0.96,
+          friction: 0.98,
+          mass: 2.0, // Higher mass
+          restitution: 1.0, // Perfectly elastic
+          color: Colors.green, // Different color for distinction
+        ),
+      ];
+    });
+  }
 
+  /// Ticker callback to update the physics simulation
+  void _onTick(Duration elapsed) {
+    // Initialize calibration and balls
+    if (!_isCalibrated) {
+      if (_balls.isNotEmpty) {
+        _calibrationOffset = Offset(_filteredAccelX, _filteredAccelY);
+        _isCalibrated = true;
         developer.log('Calibration Offset: $_calibrationOffset');
-
-        return; // Skip physics update on calibration tick
       }
     }
 
-    if (_ballPhysics == null) return; // Safety check
+    if (!_isCalibrated) return; // Skip updates until calibration
 
     // Calculate adjusted acceleration by removing calibration offset
     Offset adjustedAccel = Offset(_filteredAccelX, _filteredAccelY) - _calibrationOffset;
 
-    // Observe the adjustedAccel values and decide on inversion
-    // Here, we assume that tilting forward increases adjustedAccel.dy
-    // Adjust inversion based on your observations
-    Offset acceleration = Offset(-adjustedAccel.dx, adjustedAccel.dy) * _sensitivity;
+    // Invert Y-axis to align tilting down with positive screen Y movement
+    Offset acceleration = Offset(adjustedAccel.dx, -adjustedAccel.dy) * _sensitivity;
 
-    // Apply acceleration to physics
-    _ballPhysics!.applyAcceleration(acceleration);
+    // Apply acceleration to each ball
+    for (var ball in _balls) {
+      ball.applyAcceleration(acceleration);
+      ball.updatePosition();
+    }
 
-    // Update physics
-    _ballPhysics!.updatePosition();
+    // Handle ball-ball collisions
+    _handleBallCollisions();
 
     // Log position and velocity for debugging
-    developer.log('Position: ${_ballPhysics!.position}, Velocity: ${_ballPhysics!.velocity}');
+    for (int i = 0; i < _balls.length; i++) {
+      developer.log('Ball $i - Position: ${_balls[i].position}, Velocity: ${_balls[i].velocity}');
+    }
 
     // Trigger a rebuild for rendering
     setState(() {});
+  }
+
+  /// Handles collisions between balls
+  void _handleBallCollisions() {
+    for (int i = 0; i < _balls.length; i++) {
+      for (int j = i + 1; j < _balls.length; j++) {
+        BallPhysics ball1 = _balls[i];
+        BallPhysics ball2 = _balls[j];
+
+        double distance = (ball1.position - ball2.position).distance;
+        double minDistance = ball1.radius + ball2.radius;
+
+        if (distance < minDistance) {
+          // Calculate normal and tangent vectors
+          Offset normal = (ball2.position - ball1.position) / distance;
+          Offset tangent = Offset(-normal.dy, normal.dx);
+
+          // Project velocities onto the normal and tangent vectors
+          double v1n = ball1.velocity.dx * normal.dx + ball1.velocity.dy * normal.dy;
+          double v1t = ball1.velocity.dx * tangent.dx + ball1.velocity.dy * tangent.dy;
+          double v2n = ball2.velocity.dx * normal.dx + ball2.velocity.dy * normal.dy;
+          double v2t = ball2.velocity.dx * tangent.dx + ball2.velocity.dy * tangent.dy;
+
+          // Calculate new normal velocities after collision using 1D elastic collision equations
+          double v1nAfter = (v1n * (ball1.mass - ball2.mass) + 2 * ball2.mass * v2n) / (ball1.mass + ball2.mass);
+          double v2nAfter = (v2n * (ball2.mass - ball1.mass) + 2 * ball1.mass * v1n) / (ball1.mass + ball2.mass);
+
+          // Convert scalar normal and tangential velocities into vectors
+          Offset v1nAfterVec = normal * v1nAfter;
+          Offset v1tAfterVec = tangent * v1t;
+          Offset v2nAfterVec = normal * v2nAfter;
+          Offset v2tAfterVec = tangent * v2t;
+
+          // Update velocities by combining normal and tangential components
+          ball1.velocity = v1nAfterVec + v1tAfterVec;
+          ball2.velocity = v2nAfterVec + v2tAfterVec;
+
+          // Adjust positions to prevent sticking
+          double overlap = minDistance - distance;
+          Offset displacement = normal * (overlap / 2);
+          ball1.position -= displacement;
+          ball2.position += displacement;
+
+          // Optional: Change colors to indicate collision
+          ball1.color = Colors.red;
+          ball2.color = Colors.red;
+
+          // Reset colors after a short duration
+          ball1._resetColor();
+          ball2._resetColor();
+        }
+      }
+    }
   }
 
   // Low-pass filter to smooth accelerometer data
@@ -135,29 +212,22 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
     return Scaffold(
       body: Stack(
         children: [
-          // Ball using Transform for better performance
-          Center(
-            child: _ballPhysics == null
-                ? Container(
-              width: _ballRadius * 2,
-              height: _ballRadius * 2,
-              decoration: BoxDecoration(
-                color: Colors.blue,
-                shape: BoxShape.circle,
-              ),
-            )
-                : Transform.translate(
-              offset: _ballPhysics!.position,
-              child: Container(
-                width: _ballRadius * 2,
-                height: _ballRadius * 2,
-                decoration: BoxDecoration(
-                  color: _ballPhysics!.color, // Use the ball's current color
-                  shape: BoxShape.circle,
+          // Render all balls
+          ..._balls.map((ball) {
+            return Center(
+              child: Transform.translate(
+                offset: ball.position,
+                child: Container(
+                  width: ball.radius * 2,
+                  height: ball.radius * 2,
+                  decoration: BoxDecoration(
+                    color: ball.color, // Use the ball's current color
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          }).toList(),
           // Display accelerometer data for debugging
           Positioned(
             top: 10,
@@ -197,6 +267,24 @@ class _BallSimulatorState extends State<BallSimulator> with SingleTickerProvider
                     ],
                   ),
               ],
+            ),
+          ),
+          // Add a Floating Action Button to reset calibration and balls
+          Positioned(
+            bottom: 10,
+            right: 10,
+            child: FloatingActionButton(
+              onPressed: () {
+                setState(() {
+                  _isCalibrated = false;
+                  _calibrationOffset = Offset.zero;
+                  _balls.forEach((ball) => ball.reset());
+                  _balls.clear();
+                  _initializeBalls();
+                });
+              },
+              child: Icon(Icons.refresh),
+              mini: true,
             ),
           ),
         ],
