@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 class BallPhysics {
   Offset position;
   Offset velocity;
-  final double radius;
+  double radius;
   final double boundaryRadius;
   final double damping;
   final double friction;

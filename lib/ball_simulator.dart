@@ -135,6 +135,52 @@ class _BallSimulatorState extends State<BallSimulator>
     });
   }
 
+  /// Adds a new ball at a random position with a random color
+  void _addBall() {
+    // Ensure screen dimensions are available
+    if (_screenWidth == 0 || _screenHeight == 0) return;
+
+    // Calculate boundary radius
+    double boundaryRadius = min(_screenWidth, _screenHeight) / 2 - _ballRadius;
+
+    // Generate random position within boundary
+    Random random = Random();
+    double angle = random.nextDouble() * 2 * pi;
+    double distance = random.nextDouble() * boundaryRadius;
+    double posX = distance * cos(angle);
+    double posY = distance * sin(angle);
+    Offset position = Offset(posX, posY);
+
+    // Assign random color
+    Color color = Colors.primaries[random.nextInt(Colors.primaries.length)];
+
+    // Create BallPhysics instance
+    BallPhysics newBall = BallPhysics(
+      position: position,
+      velocity: Offset.zero,
+      radius: _ballRadius,
+      boundaryRadius: boundaryRadius,
+      damping: 0.96,
+      friction: 0.98,
+      mass: 2.0,
+      restitution: 1.0,
+      color: color,
+    );
+
+    setState(() {
+      _balls.add(newBall);
+    });
+  }
+
+  /// Removes a ball from the simulation
+  void _removeBall() {
+    if (_balls.isNotEmpty) {
+      setState(() {
+        _balls.removeLast();
+      });
+    }
+  }
+
   /// Ticker callback to update the physics simulation
   void _onTick(Duration elapsed) {
     // Initialize calibration and balls
@@ -316,7 +362,7 @@ class _BallSimulatorState extends State<BallSimulator>
       if (deltaTime.inMilliseconds > 0) {
         Offset velocity =
             (_grabbedBall!.position - _lastTouchPosition!) /
-                deltaTime.inMilliseconds *
+                deltaTime.inMilliseconds.toDouble() *
                 1000; // pixels per second
         setState(() {
           _grabbedBall!.velocity = velocity;
