@@ -45,7 +45,7 @@ class _BallSimulatorState extends State<BallSimulator>
   DateTime? _lastTouchTime;
 
   // Maximum and minimum number of balls
-  final int _maxBalls = 20;
+  final int _maxBalls = 40;
   final int _minBalls = 1;
 
   // Total area constraint (1/3 of screen area)
