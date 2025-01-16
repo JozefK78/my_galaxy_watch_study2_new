@@ -38,6 +38,7 @@ dependencies:
   sensors_plus: any
   # wakelock: any
   wakelock_plus: any
+  #vibration: any
 
 dev_dependencies:
   flutter_test:

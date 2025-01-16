@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 class BallPhysics {
   Offset position;
   Offset velocity;
-  double radius;
+  double radius; // Mutable to allow dynamic sizing
   final double boundaryRadius;
   final double damping;
   final double friction;
@@ -21,7 +21,7 @@ class BallPhysics {
     required this.boundaryRadius,
     this.damping = 0.96,
     this.friction = 0.98,
-    this.mass = 2.0, // Increased mass for more momentum
+    this.mass = 2.0, // Mass increased for more momentum
     this.restitution = 1.0, // Perfectly elastic collisions
     required this.color, // Assign color during initialization
   });
@@ -55,7 +55,8 @@ class BallPhysics {
       Offset normal = position / distanceFromCenter;
 
       // Calculate velocity normal to the boundary
-      double velocityNormal = velocity.dx * normal.dx + velocity.dy * normal.dy;
+      double velocityNormal =
+          velocity.dx * normal.dx + velocity.dy * normal.dy;
 
       // Reflect the velocity vector over the normal with restitution
       velocity = velocity - normal * ((1 + restitution) * velocityNormal);
@@ -65,16 +66,11 @@ class BallPhysics {
     }
   }
 
-  /// Reflects a vector over a given normal.
-  Offset _reflect(Offset vector, Offset normal) {
-    double dotProduct = vector.dx * normal.dx + vector.dy * normal.dy;
-    return vector - normal * (2 * dotProduct);
-  }
-
   /// Resets the physics state (optional, for resetting the simulation)
   void reset() {
     velocity = Offset.zero;
     position = Offset.zero;
+    radius = 15; // Reset to default radius
     // No color reset needed since collision coloring is removed
   }
 }

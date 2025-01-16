@@ -8,6 +8,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'ball_physics.dart'; // Import the BallPhysics class
 import 'dart:developer' as developer;
 import 'bezel_channel.dart'; // Import the BezelChannel class
+//import 'package:vibration/vibration.dart'; // Import for haptic feedback
+import 'package:flutter/services.dart';
 
 class BallSimulator extends StatefulWidget {
   @override
@@ -19,7 +21,7 @@ class _BallSimulatorState extends State<BallSimulator>
   List<BallPhysics> _balls = []; // List to hold multiple balls
   late double _screenWidth;
   late double _screenHeight;
-  final double _ballRadius = 15;
+  double _ballRadius = 15; // Made mutable for dynamic sizing
 
   // Sensitivity factor to control acceleration response
   final double _sensitivity = 0.15; // Updated sensitivity
@@ -45,7 +47,7 @@ class _BallSimulatorState extends State<BallSimulator>
   DateTime? _lastTouchTime;
 
   // Maximum and minimum number of balls
-  final int _maxBalls = 40;
+  final int _maxBalls = 60; // Updated to 60
   final int _minBalls = 1;
 
   // Total area constraint (1/3 of screen area)
@@ -135,52 +137,6 @@ class _BallSimulatorState extends State<BallSimulator>
     });
   }
 
-  /// Adds a new ball at a random position with a random color
-  void _addBall() {
-    // Ensure screen dimensions are available
-    if (_screenWidth == 0 || _screenHeight == 0) return;
-
-    // Calculate boundary radius
-    double boundaryRadius = min(_screenWidth, _screenHeight) / 2 - _ballRadius;
-
-    // Generate random position within boundary
-    Random random = Random();
-    double angle = random.nextDouble() * 2 * pi;
-    double distance = random.nextDouble() * boundaryRadius;
-    double posX = distance * cos(angle);
-    double posY = distance * sin(angle);
-    Offset position = Offset(posX, posY);
-
-    // Assign random color
-    Color color = Colors.primaries[random.nextInt(Colors.primaries.length)];
-
-    // Create BallPhysics instance
-    BallPhysics newBall = BallPhysics(
-      position: position,
-      velocity: Offset.zero,
-      radius: _ballRadius,
-      boundaryRadius: boundaryRadius,
-      damping: 0.96,
-      friction: 0.98,
-      mass: 2.0,
-      restitution: 1.0,
-      color: color,
-    );
-
-    setState(() {
-      _balls.add(newBall);
-    });
-  }
-
-  /// Removes a ball from the simulation
-  void _removeBall() {
-    if (_balls.isNotEmpty) {
-      setState(() {
-        _balls.removeLast();
-      });
-    }
-  }
-
   /// Ticker callback to update the physics simulation
   void _onTick(Duration elapsed) {
     // Initialize calibration and balls
@@ -195,7 +151,8 @@ class _BallSimulatorState extends State<BallSimulator>
     if (!_isCalibrated) return; // Skip updates until calibration
 
     // Calculate adjusted acceleration by removing calibration offset
-    Offset adjustedAccel = Offset(_filteredAccelX, _filteredAccelY) - _calibrationOffset;
+    Offset adjustedAccel =
+        Offset(_filteredAccelX, _filteredAccelY) - _calibrationOffset;
 
     // Corrected Acceleration Inversion
     // Invert X-axis to align tilting left with positive screen X movement
@@ -209,8 +166,8 @@ class _BallSimulatorState extends State<BallSimulator>
       }
     }
 
-    // Handle ball-ball collisions
-    _handleBallCollisions();
+    // Handle collisions excluding the grabbed ball
+    _handleBallCollisionsExcludingGrabbedBall();
 
     // Log position and velocity for debugging
     for (int i = 0; i < _balls.length; i++) {
@@ -222,12 +179,15 @@ class _BallSimulatorState extends State<BallSimulator>
     setState(() {});
   }
 
-  /// Handles collisions between balls
-  void _handleBallCollisions() {
+  /// Handles collisions between balls excluding the grabbed ball
+  void _handleBallCollisionsExcludingGrabbedBall() {
     for (int i = 0; i < _balls.length; i++) {
       for (int j = i + 1; j < _balls.length; j++) {
         BallPhysics ball1 = _balls[i];
         BallPhysics ball2 = _balls[j];
+
+        // Skip collision if one of the balls is the grabbed ball
+        if (ball1 == _grabbedBall || ball2 == _grabbedBall) continue;
 
         double distance = (ball1.position - ball2.position).distance;
         double minDistance = ball1.radius + ball2.radius;
@@ -260,11 +220,30 @@ class _BallSimulatorState extends State<BallSimulator>
           // Adjust positions to prevent sticking
           double overlap = minDistance - distance;
           Offset displacement = normal * (overlap / 2);
-          ball1.position -= displacement;
-          ball2.position += displacement;
+          setState(() {
+            ball1.position -= displacement;
+            ball2.position += displacement;
+          });
+
+          // Optional: Clamp velocities to prevent excessive speeds
+          double maxSpeed = 1000; // Adjust as needed
+          if (ball1.velocity.distance > maxSpeed) {
+            ball1.velocity = ball1.velocity / ball1.velocity.distance * maxSpeed;
+          }
+          if (ball2.velocity.distance > maxSpeed) {
+            ball2.velocity = ball2.velocity / ball2.velocity.distance * maxSpeed;
+          }
+
+          // Optional: Trigger haptic feedback on collision
+          _triggerHapticFeedback();
         }
       }
     }
+  }
+
+  /// Triggers haptic feedback on collision
+  void _triggerHapticFeedback() {
+    // HapticFeedback.lightImpact();
   }
 
   /// Handles bezel rotation to adjust the number of balls
@@ -291,28 +270,148 @@ class _BallSimulatorState extends State<BallSimulator>
     });
   }
 
+  /// Adds a new ball at a random position with a random color
+  void _addBall() {
+    // Ensure screen dimensions are available
+    if (_screenWidth == 0 || _screenHeight == 0) return;
+
+    // Calculate boundary radius
+    double boundaryRadius = min(_screenWidth, _screenHeight) / 2 - _ballRadius;
+
+    // Generate random position within boundary
+    Random random = Random();
+    Offset position;
+    int attempts = 0;
+    do {
+      double angle = random.nextDouble() * 2 * pi;
+      double distance = random.nextDouble() * boundaryRadius;
+      double posX = distance * cos(angle);
+      double posY = distance * sin(angle);
+      position = Offset(posX, posY);
+      attempts++;
+      if (attempts > 100) break; // Prevent infinite loop
+    } while (!_isPositionValid(position));
+
+    // Assign random color
+    Color color = Colors.primaries[random.nextInt(Colors.primaries.length)];
+
+    // Create BallPhysics instance
+    BallPhysics newBall = BallPhysics(
+      position: position,
+      velocity: Offset.zero,
+      radius: _ballRadius,
+      boundaryRadius: boundaryRadius,
+      damping: 0.96,
+      friction: 0.98,
+      mass: 2.0,
+      restitution: 1.0,
+      color: color,
+    );
+
+    setState(() {
+      _balls.add(newBall);
+    });
+
+    // After adding a new ball, ensure no overlaps
+    _ensureNoOverlaps();
+  }
+
+  /// Removes a ball from the simulation
+  void _removeBall() {
+    if (_balls.isNotEmpty) {
+      setState(() {
+        _balls.removeLast();
+      });
+
+      // After removing a ball, ensure sizes are adjusted
+      _adjustBallSizes();
+    }
+  }
+
+  /// Checks if the new ball's position is valid (no overlap with existing balls)
+  bool _isPositionValid(Offset position) {
+    for (var ball in _balls) {
+      if ((ball.position - position).distance < (ball.radius * 2)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Ensures that no balls are overlapping after resizing or adding/removing balls
+  void _ensureNoOverlaps() {
+    bool overlapsExist = true;
+    int iterations = 0;
+    const int maxIterations = 100;
+
+    while (overlapsExist && iterations < maxIterations) {
+      overlapsExist = false;
+
+      for (int i = 0; i < _balls.length; i++) {
+        for (int j = i + 1; j < _balls.length; j++) {
+          BallPhysics ball1 = _balls[i];
+          BallPhysics ball2 = _balls[j];
+
+          double distance = (ball1.position - ball2.position).distance;
+          double minDistance = ball1.radius + ball2.radius;
+
+          if (distance < minDistance) {
+            overlapsExist = true;
+
+            // Calculate the overlap distance
+            double overlap = minDistance - distance;
+
+            // Calculate the direction to separate the balls
+            Offset direction = (ball2.position - ball1.position) / distance;
+
+            // Move each ball by half the overlap in opposite directions
+            setState(() {
+              ball1.position -= direction * (overlap / 2);
+              ball2.position += direction * (overlap / 2);
+            });
+          }
+        }
+      }
+
+      iterations++;
+    }
+
+    if (iterations == maxIterations) {
+      developer.log('Max iterations reached while resolving overlaps.');
+    }
+  }
+
   /// Adjusts ball sizes based on the number of balls to ensure total area <= 1/3 of screen area
   void _adjustBallSizes() {
     // Calculate total available area
     double screenArea = _screenWidth * _screenHeight;
     double maxTotalArea = screenArea * _maxTotalAreaRatio;
 
-    // Calculate current total area
-    double currentTotalArea = _balls.fold(
-        0, (sum, ball) => sum + pi * pow(ball.radius, 2));
+    // Calculate current total area based on the number of balls
+    double currentTotalArea = pi * pow(_ballRadius, 2) * _balls.length;
 
-    // If current total area exceeds max, scale down the radii
+    // Determine if resizing is needed
     if (currentTotalArea > maxTotalArea) {
+      // Calculate scaling factor
       double scalingFactor = sqrt(maxTotalArea / currentTotalArea);
-      for (var ball in _balls) {
-        ball.radius *= scalingFactor;
-      }
+
+      // Apply scaling factor to all balls
+      setState(() {
+        for (var ball in _balls) {
+          ball.radius = _ballRadius * scalingFactor;
+        }
+      });
     } else {
-      // If total area is less, reset to default radius
-      for (var ball in _balls) {
-        ball.radius = _ballRadius;
-      }
+      // Reset to default radius if within limits
+      setState(() {
+        for (var ball in _balls) {
+          ball.radius = _ballRadius;
+        }
+      });
     }
+
+    // After resizing, ensure no overlaps
+    _ensureNoOverlaps();
   }
 
   /// Handles touch interactions
@@ -340,10 +439,6 @@ class _BallSimulatorState extends State<BallSimulator>
       Offset touchPosition =
           details.localPosition - Offset(_screenWidth / 2, _screenHeight / 2);
 
-      // Calculate movement delta
-      Offset delta = touchPosition - _lastTouchPosition!;
-      Duration deltaTime = DateTime.now().difference(_lastTouchTime!);
-
       // Update ball's position
       setState(() {
         _grabbedBall!.position = touchPosition;
@@ -363,7 +458,7 @@ class _BallSimulatorState extends State<BallSimulator>
         Offset velocity =
             (_grabbedBall!.position - _lastTouchPosition!) /
                 deltaTime.inMilliseconds.toDouble() *
-                1000; // pixels per second
+                1000.0; // pixels per second
         setState(() {
           _grabbedBall!.velocity = velocity;
         });
@@ -374,17 +469,17 @@ class _BallSimulatorState extends State<BallSimulator>
     _lastTouchTime = null;
   }
 
-  /// Low-pass filter to smooth accelerometer data
-  double _lowPassFilter(double current, double newValue, double alpha) {
-    return current * (1.0 - alpha) + newValue * alpha;
-  }
-
   @override
   void dispose() {
     // Disable wakelock when the app is closed
     WakelockPlus.disable();
     _ticker.dispose();
     super.dispose();
+  }
+
+  /// Low-pass filter to smooth accelerometer data
+  double _lowPassFilter(double current, double newValue, double alpha) {
+    return current * (1.0 - alpha) + newValue * alpha;
   }
 
   @override
@@ -398,6 +493,7 @@ class _BallSimulatorState extends State<BallSimulator>
         onPanStart: _handlePanStart,
         onPanUpdate: _handlePanUpdate,
         onPanEnd: _handlePanEnd,
+        behavior: HitTestBehavior.opaque, // Ensures all touch events are captured
         child: Stack(
           children: [
             // Render all balls
@@ -466,7 +562,7 @@ class _BallSimulatorState extends State<BallSimulator>
                 ],
               ),
             ),
-            // Move reset button to (20, 20)
+            // Reset button positioned at (20, 20)
             Positioned(
               top: 20,
               left: 20,
@@ -482,6 +578,17 @@ class _BallSimulatorState extends State<BallSimulator>
                 },
                 child: Icon(Icons.refresh),
                 mini: true,
+              ),
+            ),
+            // Optional: User Instructions
+            Positioned(
+              bottom: 10,
+              left: 10,
+              right: 10,
+              child: Text(
+                'Rotate bezel to adjust balls. Touch and drag to move balls.',
+                style: TextStyle(color: Colors.white, fontSize: 8),
+                textAlign: TextAlign.center,
               ),
             ),
           ],

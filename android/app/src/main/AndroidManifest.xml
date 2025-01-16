@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.my_galaxy_watch_study2_new">
     <application
         android:label="my_galaxy_watch_study2_new"
         android:name="${applicationName}"

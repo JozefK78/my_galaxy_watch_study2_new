@@ -1,18 +1,20 @@
+// lib/main.dart
+
 import 'package:flutter/material.dart';
 import 'ball_simulator.dart'; // Import the BallSimulator widget
 
 void main() {
-  runApp(const WearOSBallApp());
+  runApp(MyApp());
 }
 
-class WearOSBallApp extends StatelessWidget {
-  const WearOSBallApp({Key? key}) : super(key: key);
-
+class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(),
+      title: 'Wear OS Ball Simulator',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
       home: BallSimulator(),
     );
   }
