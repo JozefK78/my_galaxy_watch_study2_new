@@ -8,9 +8,7 @@ class BezelChannel {
   static Stream<double>? _rotationStream;
 
   static Stream<double> get rotationStream {
-    if (_rotationStream == null) {
-      _rotationStream = _eventChannel.receiveBroadcastStream().map((event) => event as double);
-    }
+    _rotationStream ??= _eventChannel.receiveBroadcastStream().map((event) => event as double);
     return _rotationStream!;
   }
 }

@@ -1,6 +1,5 @@
 // lib/ball_physics.dart
 
-import 'dart:math';
 import 'package:flutter/material.dart';
 
 class BallPhysics {

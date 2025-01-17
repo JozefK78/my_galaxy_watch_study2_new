@@ -61,7 +61,7 @@ class _BallSimulatorState extends State<BallSimulator>
     WakelockPlus.enable();
 
     // Initialize ticker
-    _ticker = this.createTicker(_onTick);
+    _ticker = createTicker(_onTick);
     _ticker.start();
 
     // Listen to accelerometer events
@@ -573,11 +573,14 @@ class _BallSimulatorState extends State<BallSimulator>
                   setState(() {
                     _isCalibrated = false;
                     _calibrationOffset = Offset.zero;
-                    _balls.forEach((ball) => ball.reset());
+                    for (var ball in _balls) {
+                      ball.reset();
+                    }
                     _balls.clear();
                     _initializeBalls();
                   });
                 },
+                mini: true,
                 child: Icon(Icons.refresh),
                 mini: true,
               ),
