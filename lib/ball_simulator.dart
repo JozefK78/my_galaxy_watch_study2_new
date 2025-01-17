@@ -8,8 +8,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'ball_physics.dart'; // Import the BallPhysics class
 import 'dart:developer' as developer;
 import 'bezel_channel.dart'; // Import the BezelChannel class
-//import 'package:vibration/vibration.dart'; // Import for haptic feedback
-import 'package:flutter/services.dart';
+// Removed haptic feedback imports
+// import 'package:flutter/services.dart'; // No longer needed
 
 class BallSimulator extends StatefulWidget {
   @override
@@ -235,7 +235,7 @@ class _BallSimulatorState extends State<BallSimulator>
           }
 
           // Optional: Trigger haptic feedback on collision
-          _triggerHapticFeedback();
+          // _triggerHapticFeedback(); // Removed haptic feedback call
         }
       }
     }
@@ -489,6 +489,7 @@ class _BallSimulatorState extends State<BallSimulator>
     _screenHeight = MediaQuery.of(context).size.height;
 
     return Scaffold(
+      backgroundColor: Colors.black, // Set background to black
       body: GestureDetector(
         onPanStart: _handlePanStart,
         onPanUpdate: _handlePanUpdate,
@@ -567,6 +568,7 @@ class _BallSimulatorState extends State<BallSimulator>
               top: 20,
               left: 20,
               child: FloatingActionButton(
+                backgroundColor: Colors.blue, // Ensure visibility against black
                 onPressed: () {
                   setState(() {
                     _isCalibrated = false;
